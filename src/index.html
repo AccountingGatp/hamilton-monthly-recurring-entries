@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Recurring Entries Review</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/main.js"></script>
+</head>
+<body>
+  <header class="masthead"><div class="wrap">GATP Solutions <span>Accounting tools</span></div></header>
+  <main class="wrap">
+    <section class="intro">
+      <h1>Recurring Entries Review</h1>
+      <p>Compare a monthly recurring schedule with the journal register. Files are processed in this browser.</p>
+    </section>
+    <form id="review-form" class="panel">
+      <div class="files">
+        <label>Recurring entries schedule <input type="file" name="schedule" accept=".xlsx" required></label>
+        <label>GL account list <input type="file" name="chart" accept=".xlsx" required></label>
+        <label>Journal Entry Register <input type="file" name="register" accept=".xlsx" required></label>
+      </div>
+      <p class="hint">Use accrual-basis journal data for all properties, covering the review month and the prior month.</p>
+      <div class="options">
+        <label>Review month <input type="month" name="month" required></label>
+        <label>Schedule tab <select name="tab"><option value="">Automatic by month</option></select></label>
+      </div>
+      <label class="check"><input type="checkbox" name="prior"> Use a prior-month schedule if needed</label>
+      <div class="actions">
+        <button id="run" type="submit">Run review</button>
+        <a id="download" class="button secondary" hidden>Download results ZIP</a>
+      </div>
+      <p id="status" role="status" aria-live="polite"></p>
+    </form>
+    <section class="panel results" id="results" aria-labelledby="results-title" hidden>
+      <div class="result-head"><h2 id="results-title">Review results</h2>
+        <label class="check"><input type="checkbox" id="exceptions"> Show exceptions only</label>
+      </div>
+      <p id="source" class="hint"></p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Property</th><th>GL account</th><th>Expected</th><th>Current net</th><th>Prior net</th><th>Status</th><th>Journal IDs</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

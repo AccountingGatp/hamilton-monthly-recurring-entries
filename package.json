@@ -1,0 +1,9 @@
+{
+  "name": "recurring-entries-review",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "24.x" },
+  "scripts": { "build": "node build.mjs" },
+  "dependencies": { "pyodide": "0.29.5" }
+}
