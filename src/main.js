@@ -79,7 +79,7 @@ fileInputs[0].addEventListener("change", async () => {
 function renderRows() {
   const fragment = document.createDocumentFragment();
   for (const row of displayedRows) {
-    const exception = row[5] !== matchedStatus;
+    const exception = row[6] !== matchedStatus;
     if (exceptions.checked && !exception) continue;
     const tr = document.createElement("tr");
     tr.toggleAttribute("data-exception", exception);
@@ -102,9 +102,10 @@ form.addEventListener("submit", async event => {
     report("Select three .xlsx workbooks.", true);
     return;
   }
-  const month = form.elements.namedItem("month").value;
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
-    report("Enter the review month as YYYY-MM.", true);
+  const start = form.elements.namedItem("start").value;
+  const end = form.elements.namedItem("end").value;
+  if (!start || !end || start > end) {
+    report("Enter a start date and an end date in chronological order.", true);
     return;
   }
   const tab = select.value;
@@ -118,20 +119,27 @@ form.addEventListener("submit", async event => {
   try {
     const buffers = await Promise.all(files.map(file => file.arrayBuffer()));
     const result = await request({ task: "review", buffers, names: files.map(file => file.name),
-      month, tab, prior }, buffers);
-    const { details, rows, zip } = result;
-    displayedRows = rows.sort((a, b) => Number(a[5] === matchedStatus) - Number(b[5] === matchedStatus));
-    const matched = rows.filter(row => row[5] === matchedStatus).length;
+      start, end, tab, prior }, buffers);
+    const { details, rows, zip, months } = result;
+    displayedRows = rows.sort((a, b) => Number(a[6] === matchedStatus) - Number(b[6] === matchedStatus));
+    const matched = rows.filter(row => row[6] === matchedStatus).length;
     results.hidden = false;
     exceptions.checked = false;
-    document.querySelector("#source").textContent =
-      `Schedule tab ${details["Schedule tab"]} · ${details["Schedule source"]} · ${details["Register coverage"]}`;
-    report(`${month} · ${matched} matched · ${rows.length - matched} to review · ${details["Draft entries"]} drafts` +
-      (details["Full review month in register"] === "Yes" ? "" : " · Partial or unverified register coverage"));
+    document.querySelector("#source").textContent = `Register coverage · ${details["Register coverage"]}`;
+    document.querySelector("#coverage").replaceChildren(...months.map(
+      ([month, from, through, sourceTab, scheduleStatus, registerCoverage, priorCoverage]) => {
+        const item = document.createElement("li");
+        item.textContent = `${month} · ${from} to ${through} · ${sourceTab ? sourceTab + " · " : ""}${scheduleStatus}` +
+          ` · Register ${registerCoverage.toLowerCase()}` + (priorCoverage === "No" ? " · Prior month not covered" : "");
+        return item;
+      }
+    ));
+    report(`${start} to ${end} · ${matched} matched · ${rows.length - matched} to review · ${details["Draft entries"]} drafts` +
+      (details["Months without a schedule"] ? ` · ${details["Months without a schedule"]} without schedule coverage` : ""));
     renderRows();
     downloadUrl = URL.createObjectURL(new Blob([zip], { type: "application/zip" }));
     download.href = downloadUrl;
-    download.download = `Recurring_Review_${month}.zip`;
+    download.download = `Recurring_Review_${start}_to_${end}.zip`;
     download.hidden = false;
   } catch (error) {
     report(error.message, true);

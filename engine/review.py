@@ -2,7 +2,7 @@
 import calendar
 import re
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
@@ -276,6 +276,10 @@ class ScheduleMonthMissing(ValueError):
     pass
 
 
+class ScheduleMonthAmbiguous(ValueError):
+    pass
+
+
 def schedule_columns(row):
     fields = headings(row)
     code = column(fields, "gl", "gl account", "gl code", "account", "account code", "account number")
@@ -333,63 +337,60 @@ def schedule_rows(sheet):
                        as_date(when), memo, "" if county else clean(note), value, county)
 
 
-def read_schedule(path, month, tab_name=None):
-    book = load_workbook(path, read_only=True, data_only=True)
-    try:
-        if tab_name:
-            if tab_name not in book.sheetnames:
-                raise ValueError(f"Schedule tab {tab_name!r} was not found.")
-            sheet = book[tab_name]
-            dated = tab_month(sheet.title)
-            month_only = month_name(sheet.title.strip())
-            if (dated and dated != month) or (month_only and month_only != month.month):
-                raise ValueError(f"Schedule tab {tab_name!r} does not match the chosen schedule month.")
-            selected = [(sheet, list(schedule_rows(sheet)))]
-        else:
-            selected = [(sheet, list(schedule_rows(sheet))) for sheet in book if tab_month(sheet.title) == month]
-            if not selected:
-                for sheet in book:
-                    if month_name(sheet.title.strip()) != month.month:
-                        continue
-                    rows = list(schedule_rows(sheet))
-                    years = {row.date.year for row in rows if row.date and row.date.month == month.month}
-                    if years == {month.year}:
-                        selected.append((sheet, rows))
-        if not selected:
-            raise ScheduleMonthMissing("No schedule tab could be identified for this month. "
-                                       "Select the schedule tab manually if its name is undated or custom.")
-        if len(selected) > 1:
-            raise ValueError("More than one schedule tab matches this month. Select the correct tab.")
-        sheet, expected = selected[0]
-        if not expected:
-            raise ValueError("No recurring schedule rows were found on the selected tab.")
-        return sheet.title, expected
-    finally:
-        book.close()
+def schedule_for_month(tabs, month, tab_name=None, single_month=False):
+    candidates = [tab_name] if tab_name else [title for title in tabs if tab_month(title) == month]
+    if not candidates:
+        candidates = [
+            title for title, rows in tabs.items()
+            if not tab_month(title)
+            and month_name(title.strip()) in (None, month.month)
+            and any(row.date and month_start(row.date) == month for row in rows)
+        ]
+    if len(candidates) > 1:
+        raise ScheduleMonthAmbiguous("Multiple schedule tabs match; select a tab to resolve the ambiguity.")
+    if not candidates:
+        raise ScheduleMonthMissing("No schedule tab or dated schedule rows found for this month.")
+
+    title = candidates[0]
+    rows = tabs[title]
+    dated_title = tab_month(title)
+    named_month = month_name(title.strip())
+    dated_months = {month_start(row.date) for row in rows if row.date}
+    matching = [row for row in rows if row.date and month_start(row.date) == month]
+    named_years = {period.year for period in dated_months if period.month == month.month}
+    if dated_title == month or (named_month == month.month and named_years == {month.year}):
+        selected = rows
+    elif dated_title or (named_month and named_month != month.month):
+        selected = []
+    elif tab_name and single_month and (not dated_months or matching):
+        selected = rows if len(dated_months) <= 1 else matching
+    else:
+        selected = matching
+    if not selected:
+        raise ScheduleMonthMissing("The selected schedule has no eligible rows for this month.")
+    return title, selected
 
 
 def property_key(value):
     return re.sub(r"[^\w]", "", clean(value).casefold()).replace("_", "")
 
 
-def run(schedule, chart, register, target, allow_rollforward, tab_name=None, tab_is_prior=False):
-    prior = preceding(target)
-    carried = tab_is_prior
-    if tab_name:
-        tab, expected = read_schedule(schedule, prior if carried else target, tab_name)
-    else:
-        try:
-            tab, expected = read_schedule(schedule, target)
-        except ScheduleMonthMissing:
-            if not allow_rollforward:
-                raise
-            tab, expected = read_schedule(schedule, prior)
-            carried = True
+def run_range(schedule, chart, register, first_date, last_date, allow_rollforward, tab_name=None):
+    if first_date > last_date:
+        raise ValueError("The end date must be on or after the start date.")
+    if first_date.year == 1 and first_date.month == 1:
+        raise ValueError("Choose a start date with a preceding calendar month.")
+    workbook = load_workbook(schedule, read_only=True, data_only=True)
+    try:
+        if tab_name and tab_name not in workbook.sheetnames:
+            raise ValueError(f"Schedule tab {tab_name!r} was not found.")
+        tabs = {sheet.title: list(schedule_rows(sheet)) for sheet in workbook
+                if not tab_name or sheet.title == tab_name}
+    finally:
+        workbook.close()
 
     books = read_chart(chart)
     entries, start, end, printed, book_name, properties_scope = read_register(register)
-    covered = (properties_scope.upper() == "ALL" and start <= target
-               and end >= month_end(target) and printed and printed > month_end(target))
     index = defaultdict(list)
     for entry in entries:
         if entry.basis.lower() not in {"accrual", "both"} or entry.book.lower() != book_name.lower():
@@ -401,6 +402,69 @@ def run(schedule, chart, register, target, allow_rollforward, tab_name=None, tab
     normalized_properties = defaultdict(set)
     for prop in known_properties:
         normalized_properties[property_key(prop)].add(prop)
+    report, drafts, activity, months = [], [], [], []
+    first_month, last_month = month_start(first_date), month_start(last_date)
+    for year_month in range(first_month.year * 12 + first_month.month - 1,
+                            last_month.year * 12 + last_month.month):
+        year, month_index = divmod(year_month, 12)
+        target = date(year, month_index + 1, 1)
+        lower, upper = max(first_date, target), min(last_date, month_end(target))
+        full_month = lower == target and upper == month_end(target)
+        coverage = ("Complete" if properties_scope.upper() == "ALL" and start <= lower
+                    and end >= upper and printed and printed > upper else "Partial or unverified")
+        single_month = first_month == last_month
+        issue = ""
+        carried = False
+        try:
+            if tab_name and allow_rollforward and single_month:
+                tab, expected = schedule_for_month(tabs, preceding(target), tab_name, True)
+                carried = True
+            else:
+                try:
+                    tab, expected = schedule_for_month(tabs, target, tab_name, single_month)
+                except ScheduleMonthMissing:
+                    if not allow_rollforward:
+                        raise
+                    tab, expected = schedule_for_month(tabs, preceding(target), tab_name, single_month)
+                    carried = True
+        except (ScheduleMonthMissing, ScheduleMonthAmbiguous) as error:
+            issue = str(error)
+            tab, expected = "", []
+
+        window_rows, window_drafts, window_activity = review_month(
+            [replace(row) for row in expected], books, index, known_properties, normalized_properties,
+            target, lower, upper, tab, carried, full_month and coverage == "Complete")
+        report.extend(window_rows)
+        drafts.extend(window_drafts)
+        activity.extend(window_activity)
+        matched = sum(row[0] == "Matched journal entry" for row in window_rows)
+        prior = preceding(target)
+        months.append([
+            f"{target:%Y-%m}", lower, upper, tab,
+            issue or ("Prior month carried forward" if carried else "Current month"),
+            coverage, "Yes" if start <= prior and end >= month_end(prior) else "No",
+            matched, len(window_rows) - matched, len(window_drafts) // 2,
+        ])
+
+    details = {
+        "Review start": first_date, "Review end": last_date,
+        "Register coverage": f"{start} to {end}, printed {printed or 'unknown'}, scope {properties_scope}",
+        "Journal entries read": len(entries),
+        "Schedule rows reviewed": len(report),
+        "Months without a schedule": sum(not item[3] for item in months),
+        "Draft entries": len(drafts) // 2,
+        "Scope": "Current journal activity is limited to the selected dates; prior activity is the preceding calendar month.",
+        "Mortgage": "Verify against the current loan statement and invoice or GL Detail export.",
+        "Drafts": "Drafts require a complete calendar month in the review and a register printed after month-end.",
+        "Sources": " | ".join(Path(getattr(p, "name", p)).name for p in (schedule, chart, register)),
+    }
+    return details, report, drafts, activity, months
+
+
+def review_month(expected, books, index, known_properties, normalized_properties,
+                 target, lower, upper, tab, carried, draft_coverage):
+    prior = preceding(target)
+    full_month = lower == target and upper == month_end(target)
     for row in expected:
         if row.property in known_properties:
             continue
@@ -413,6 +477,17 @@ def run(schedule, chart, register, target, allow_rollforward, tab_name=None, tab
         if len(options) == 1:
             row.property = next(iter(options))
 
+    def review_date(row):
+        if not row.date or month_start(row.date) != (prior if carried else target):
+            return None
+        if not carried:
+            return row.date
+        last_day = month_end(target).day
+        day = last_day if row.date == month_end(prior) else min(row.date.day, last_day)
+        return target.replace(day=day)
+
+    watched = {row.account for row in expected}
+    expected = [row for row in expected if review_date(row) is None or lower <= review_date(row) <= upper]
     counts = Counter((row.property, row.account) for row in expected)
     amount_counts = Counter((row.property, row.account, row.amount) for row in expected)
     report = []
@@ -421,16 +496,10 @@ def run(schedule, chart, register, target, allow_rollforward, tab_name=None, tab
     for row in expected:
         key = (row.property, row.account)
         offset = OFFSET_ACCOUNTS.get(row.account)
-        current = index[target, *key]
-        previous = index[prior, *key]
-        proposed_date = row.date
-        valid_source_date = row.date and month_start(row.date) == (prior if carried else target)
-        if carried and valid_source_date:
-            last_current = month_end(target).day
-            new_day = last_current if row.date == month_end(prior) else min(row.date.day, last_current)
-            proposed_date = target.replace(day=new_day)
-        if not valid_source_date:
-            proposed_date = None
+        current = [(entry, line) for entry, line in index.get((target, *key), ())
+                   if lower <= entry.date <= upper]
+        previous = index.get((prior, *key), ())
+        proposed_date = review_date(row)
 
         def supported(entry, line):
             peers = [other for other in entry.lines if other.row != line.row]
@@ -448,6 +517,8 @@ def run(schedule, chart, register, target, allow_rollforward, tab_name=None, tab
             status = "Verify account in chart"
         elif amount_counts[*key, row.amount] > 1 or len(match) > 1:
             status = "Review possible duplicate"
+        elif not full_month and not proposed_date:
+            status = "Verify schedule date for selected range"
         elif match:
             entry, line = match[0]
             referenced_rows.add(line.row)
@@ -465,7 +536,9 @@ def run(schedule, chart, register, target, allow_rollforward, tab_name=None, tab
                 status = "Matched journal entry"
         elif current:
             status = "Review current journal activity"
-        elif not covered:
+        elif not full_month:
+            status = "Partial month - review without a draft"
+        elif not draft_coverage:
             status = "Incomplete register coverage - verify"
         elif not proposed_date:
             status = "Verify schedule date"
@@ -486,25 +559,10 @@ def run(schedule, chart, register, target, allow_rollforward, tab_name=None, tab
                        len(current), ", ".join(dict.fromkeys(e.id for e, _ in current)),
                        ", ".join(dict.fromkeys(e.id for e, _ in previous)),
                        sum((line.net for _, line in current), Decimal(0)),
-                       sum((line.net for _, line in previous), Decimal(0))])
+                       sum((line.net for _, line in previous), Decimal(0)), f"{target:%Y-%m}"])
 
-    watched = {row.account for row in expected}
     activity = [[e.id, e.date, l.property, l.account, l.debit, l.credit, l.memo or e.memo,
                  l.row, "Schedule amount found" if l.row in referenced_rows else "Review against schedule"]
-                for (period, _, code), values in index.items() if period == target and code in watched
-                for e, l in values]
-    details = {
-        "Review month": f"{target:%Y-%m}", "Schedule tab": tab,
-        "Schedule source": "Prior month carried forward" if carried else "Selected month",
-        "Register coverage": f"{start} to {end}, printed {printed or 'unknown'}, scope {properties_scope}",
-        "Full review month in register": "Yes" if covered else "No",
-        "Register includes prior month": "Yes" if start <= prior and end >= month_end(prior) else "No",
-        "Journal entries read": len(entries),
-        "Schedule rows reviewed": len(report),
-        "Draft entries": len(drafts) // 2,
-        "Scope": "Journal entries only. Bills, invoice activity, trailing P&L and loan statements are outside these exports.",
-        "Mortgage": "Verify against the current loan statement and invoice or GL Detail export.",
-        "Drafts": "Review source support and check for posting since the register was printed. Draft CSV is a workpaper.",
-        "Sources": " | ".join(Path(getattr(p, "name", p)).name for p in (schedule, chart, register)),
-    }
-    return details, report, drafts, activity
+                for (period, _, code), values in index.items() if period == target and (not expected and not tab or code in watched)
+                for e, l in values if lower <= e.date <= upper]
+    return report, drafts, activity

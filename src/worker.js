@@ -30,7 +30,7 @@ self.onmessage = async ({ data }) => {
       return;
     }
     const result = engine.review(...data.buffers.map(buffer => new Uint8Array(buffer)),
-      JSON.stringify(data.names), data.month, data.tab, data.prior);
+      JSON.stringify(data.names), data.start, data.end, data.tab, data.prior);
     try {
       const [summary, zip] = result.toJs();
       self.postMessage({ id, ...JSON.parse(summary), zip }, [zip.buffer]);

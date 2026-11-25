@@ -22,10 +22,10 @@ p { margin: 0; line-height: 1.5; }
 .hint { margin-top: 12px; font-size: .9rem; }
 .panel { padding: 22px; background: #fff; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 5px 18px #12362f09; }
 .files, .options { display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.options { grid-template-columns: minmax(145px, 200px) minmax(0, 340px); margin-top: 18px; }
+.options { grid-template-columns: repeat(2, minmax(135px, 180px)) minmax(0, 1fr); margin-top: 18px; }
 label { display: grid; gap: 6px; font-weight: 650; font-size: .91rem; }
 input, select, button { font: inherit; }
-input[type="file"], input[type="month"], select { width: 100%; min-height: 42px; padding: 7px 9px; border: 1px solid #acbec2; border-radius: 6px; color: var(--ink); background: #fff; }
+input[type="file"], input[type="date"], select { width: 100%; min-height: 42px; padding: 7px 9px; border: 1px solid #acbec2; border-radius: 6px; color: var(--ink); background: #fff; }
 input::file-selector-button { border: 0; font: inherit; background: #e8f2f0; color: #16493f; border-radius: 4px; padding: 4px 7px; margin-right: 8px; cursor: pointer; }
 .check { display: flex; align-items: center; gap: 7px; margin-top: 14px; }
 .check input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
@@ -43,14 +43,16 @@ button:disabled { opacity: .6; cursor: wait; }
 table { width: 100%; border-collapse: collapse; font-size: .88rem; }
 th { background: #eaf3f2; text-align: left; white-space: nowrap; }
 th, td { padding: 9px; border-bottom: 1px solid var(--line); }
-td:nth-child(n+3):nth-child(-n+5) { font-variant-numeric: tabular-nums; white-space: nowrap; }
-tr[data-exception] td:nth-child(6) { color: #81500c; }
+td:nth-child(n+4):nth-child(-n+6) { font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr[data-exception] td:nth-child(7) { color: #81500c; }
 [hidden] { display: none !important; }
 @media (max-width: 720px) {
-  .files { grid-template-columns: 1fr; gap: 11px; }
+  .files, .options { grid-template-columns: 1fr; gap: 11px; }
   .panel { padding: 16px; }
   .intro { margin-top: 24px; }
 }
 @media (max-width: 375px) {
   .options { grid-template-columns: 1fr; gap: 11px; }
 }
+
+#coverage { color: var(--muted); font-size: .9rem; padding-left: 20px; line-height: 1.55; }

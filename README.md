@@ -13,7 +13,9 @@ For a local build, use Node.js 24, run `npm ci` and `npm run build`, and serve t
 
 ## Run a review
 
-Choose the three Excel files and any review month. Choose **Automatic by month** or select a specific schedule tab. For an accrual-basis register, export all properties and include the review month and the preceding month. Drafts require a full review month in the register, an export printed after month-end, and supporting prior journal activity. The download contains a summary, the schedule review, journal activity and a draft workpaper if supported.
+Choose the three Excel files and set an inclusive start and end date. The app reviews each calendar month in the range and recognizes dated schedule tabs or dated rows in a shared tab. Select a tab manually to resolve an ambiguous single month or use a shared schedule tab. A missing schedule is reported for that month. If enabled, the prior-month option uses the immediately preceding schedule when current data is missing. A manual tab plus this option in a single-month run selects the prior schedule explicitly.
+
+Export the accrual-basis register for all properties, covering the selected dates and the preceding calendar month. Current journal activity is filtered to the selected dates. The prior comparison uses the preceding calendar month. Drafts require a complete calendar month within the selected range, a register printed after month-end, and matching prior journal support. The ZIP includes review rows, journal activity, monthly coverage, and draft lines where supported.
 
 The GL account list supplies account names and codes. Trailing P&L and mortgage statement validation require separate source documents.
 
