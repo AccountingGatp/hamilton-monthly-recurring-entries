@@ -9,7 +9,20 @@
   <script type="module" src="/main.js"></script>
 </head>
 <body>
-  <header class="masthead"><div class="wrap">GATP Solutions <span>Accounting tools</span></div></header>
+  <header class="masthead"><div class="wrap">GATP Solutions <span>Accounting tools</span><button id="open-sop" class="sop-trigger" type="button" aria-haspopup="dialog" aria-controls="sop">View SOP</button></div></header>
+<dialog id="sop" aria-labelledby="sop-title">
+  <div class="sop-heading">
+    <h2 id="sop-title">Recurring entries SOP</h2>
+    <button id="close-sop" class="sop-close" type="button" autofocus>Close</button>
+  </div>
+  <ol class="sop-steps">
+    <li><strong>Prepare three Excel exports.</strong> Use the recurring entries schedule, GL account list, and the ResMan accrual-basis Journal Entry Register for all properties. The register should cover the review dates and the preceding calendar month.</li>
+    <li><strong>Select the review period.</strong> Upload each workbook and set the inclusive start and end dates. Keep Automatic by month unless you need a specific schedule tab. Enable the prior-month schedule option only when you intend to use it for a missing month.</li>
+    <li><strong>Run the review.</strong> Select Run review. Check the schedule tab and monthly coverage shown in the results.</li>
+    <li><strong>Investigate exceptions.</strong> Select Show exceptions only to focus on differences. Compare expected amounts with current and prior net activity, then use the journal IDs to trace entries in ResMan.</li>
+    <li><strong>Save and validate drafts.</strong> Select Download results ZIP. Draft lines require a full month, a register printed after month-end, and supporting prior journal activity. Verify draft lines before posting.</li>
+  </ol>
+</dialog>
   <main class="wrap">
     <section class="intro">
       <h1>Recurring Entries Review</h1>

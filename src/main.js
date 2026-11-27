@@ -149,3 +149,6 @@ form.addEventListener("submit", async event => {
     running = false;
   }
 });
+
+document.getElementById('open-sop').addEventListener('click', () => document.getElementById('sop').showModal())
+document.getElementById('close-sop').addEventListener('click', () => document.getElementById('sop').close())
